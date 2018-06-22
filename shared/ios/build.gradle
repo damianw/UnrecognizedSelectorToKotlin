@@ -1,0 +1,51 @@
+apply plugin: 'konan'
+
+ext.frameworkName = 'CommonFramework'
+konan.targets = ['ios_arm64', 'ios_x64']
+
+konanArtifacts {
+    framework(frameworkName) {
+        enableMultiplatform true
+        extraOpts '-module_name', 'USTK'
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    expectedBy project(':common')
+}
+
+task test(dependsOn: run)
+
+// Multi-architecture framework merging on assemble
+
+task mergeKonanFrameworks {
+    doLast {
+        def binPath = "${project.buildDir}/konan/bin"
+        def destPath = "$binPath/merged"
+        def targets = konan.targets
+        mkdir(destPath)
+        copy {
+            from "$binPath/${targets.first()}"
+            into destPath
+        }
+
+        def binaryPath = "${frameworkName}.framework/$frameworkName"
+        def destBinary = "$destPath/$binaryPath"
+        def archBinaries = targets.collect { "$binPath/$it/$binaryPath" }
+        def output = new ByteArrayOutputStream()
+        def process = exec {
+            commandLine 'lipo'
+            args('-create', '-output', destBinary, *archBinaries)
+            println(args)
+            standardOutput = output
+        }
+        process.assertNormalExitValue()
+        logger.info(output.toString())
+    }
+}
+
+compileKonanCommonFramework.dependsOn(mergeKonanFrameworks)
